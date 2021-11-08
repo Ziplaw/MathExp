@@ -1,0 +1,102 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel ComputeMesh
+#include "Assets/noiseSimplex.cginc"
+
+
+
+
+float2 size;
+float2 offset;
+int resolution;
+float height;
+RWStructuredBuffer<float3> vertices;
+RWStructuredBuffer<float> heightCurve;
+
+float octaves;
+float amplitude;
+float frequency;
+float persistence;
+float lacunarity;
+
+float heightCoefficient;
+int heightSamples;
+
+void Remap(float In, float2 InMinMax, float2 OutMinMax, out float Out)
+{
+    Out = OutMinMax.x + (In - InMinMax.x) * (OutMinMax.y - OutMinMax.x) / (InMinMax.y - InMinMax.x);
+}
+
+[numthreads(1,1,1)]
+void ComputeMesh(uint3 id : SV_DispatchThreadID)
+{
+    float xPos = id.x / (float)(resolution - 1) * size.y - size.y * .5;
+    float yPos = id.y / (float)(resolution - 1)* size.x - size.x * .5 ;
+
+    // lacunarity *= .1;
+    frequency *= .01;
+
+    float noise;
+    float maxHeight = amplitude;
+
+    for (int i = 0; i< octaves; i++)
+    {
+        float noiseMap = 0;
+        noiseMap = (snoise((float2(xPos+ offset.y,yPos+ offset.x) ) * frequency) * .5 + .5) *  amplitude;
+        noise += noiseMap;
+        
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    float remapped = 0;
+
+    Remap(noise,float2(0,maxHeight*2 * heightCoefficient),float2(0,heightSamples),remapped);
+    noise *= heightCurve[remapped];
+    vertices[id.x + (id.y * resolution)] = float3(yPos , noise * height, xPos );      
+}
+
+#pragma kernel ComputeTriangles
+RWStructuredBuffer<int> triangles;
+
+[numthreads(1,1,1)]
+void ComputeTriangles(uint3 id : SV_DispatchThreadID)
+{
+    // int triAmount = 6 * (resolution - 1) * (resolution - 1);
+
+    if ((id.x + 1) % (float)resolution != 0 && id.x < (resolution * resolution) - resolution)
+    {
+        float wallInterpolator = 6 * floor(resolution / ((resolution * resolution) / (float)(id.x + 1)));
+        int arrayIndex = 6 * id.x - wallInterpolator;
+        triangles[arrayIndex] = id.x;
+        triangles[arrayIndex + 1] = id.x + 1;
+        triangles[arrayIndex + 2] = id.x + resolution;
+        triangles[arrayIndex + 3] = id.x + 1;
+        triangles[arrayIndex + 4] = id.x + resolution + 1;
+        triangles[arrayIndex + 5] = id.x + resolution;
+    }
+}
+
+#pragma kernel GenerateNoise
+RWTexture2D<float> noise;
+
+
+
+[numthreads(8,8,1)]
+void GenerateNoise(uint3 id : SV_DispatchThreadID)
+{
+    lacunarity *= .1;
+
+    float noise;
+
+    for (int i = 0; i< octaves; i++)
+    {
+        float noiseMap = 0;
+        noiseMap = snoise((id.xy + float2(resolution*resolution,resolution)) * frequency) * amplitude;
+        noise += noiseMap;
+        
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+    
+    
+}

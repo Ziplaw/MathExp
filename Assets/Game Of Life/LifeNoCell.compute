@@ -1,0 +1,42 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel SimulateCell
+
+RWTexture2D<float4> Result;
+
+[numthreads(8,8,1)]
+void SimulateCell (uint3 id : SV_DispatchThreadID)
+{
+    //Una célula muerta con exactamente 3 células vecinas vivas "nace" (es decir, al turno siguiente estará viva).
+    //Una célula viva con 2 o 3 células vecinas vivas sigue viva, en otro caso muere (por "soledad" o "superpoblación").
+
+    int cellUpLeft = Result[float2(id.x-1,id.y+1)].r;
+    int cellUp = Result[float2(id.x,id.y+1)].r;
+    int cellUpRight = Result[float2(id.x+1,id.y+1)].r;
+
+    int cellDownLeft = Result[float2(id.x-1,id.y-1)].r;
+    int cellDown = Result[float2(id.x,id.y-1)].r;
+    int cellDownRight = Result[float2(id.x+1,id.y-1)].r;
+
+    int cellLeft = Result[float2(id.x-1,id.y)].r;
+    int cellRight = Result[float2(id.x+1,id.y)].r;
+    
+    int currentCell = Result[id.xy].r;
+    
+    // int cellUp = cells[id.x+((id.y-1) * height)].alive;
+    // int cellUpRight = cells[id.x+1+((id.y-1) * height)].alive;
+    // int cellDownLeft = cells[id.x-1+((id.y+1) * height)].alive;
+    // int cellDown = cells[id.x+((id.y+1) * height)].alive;
+    // int cellDownRight = cells[id.x+1+((id.y+1) * height)].alive;
+    // int cellLeft = cells[id.x-1 + (id.y * height)].alive;
+    // int cellRight = cells[id.x+1 + (id.y * height)].alive;
+    // int currentCell = cells[id.x+(id.y * height)].alive;
+
+    
+    int totalNumberOfActiveAdjacentCells = cellUp+ cellUpLeft + cellUpRight + cellDown + cellDownLeft + cellDownRight + cellLeft + cellRight;
+    int alive = 0;
+
+    alive = floor(((totalNumberOfActiveAdjacentCells | currentCell) ^ 12) /15);
+    float4 color = float4(alive,alive,alive,1);
+    Result[id.xy] = float4(color);
+}
+

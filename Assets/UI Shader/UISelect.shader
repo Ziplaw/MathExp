@@ -1,0 +1,156 @@
+﻿Shader "Custom/UISelect"
+{
+    Properties
+    {
+        [PerRendererData] _MainTex ("Sprite Texture", 2D) = "white" {}
+        _Color ("Tint", Color) = (1,1,1,1)
+
+        _StencilComp ("Stencil Comparison", Float) = 8
+        _Stencil ("Stencil ID", Float) = 0
+        _StencilOp ("Stencil Operation", Float) = 0
+        _StencilWriteMask ("Stencil Write Mask", Float) = 255
+        _StencilReadMask ("Stencil Read Mask", Float) = 255
+        _Area("Width/Height",Vector) = (1,1,0,0 )
+        _Offset("Offset",Vector) = (0,0,0,0 )
+        _RectangleRotation("Rectangle Rotation",Range(0,360)) = 0
+
+        _ColorMask ("Color Mask", Float) = 15
+
+        [Toggle(UNITY_UI_ALPHACLIP)] _UseUIAlphaClip ("Use Alpha Clip", Float) = 0
+    }
+
+    SubShader
+    {
+        Tags
+        {
+            "Queue"="Transparent"
+            "IgnoreProjector"="True"
+            "RenderType"="Transparent"
+            "PreviewType"="Plane"
+            "CanUseSpriteAtlas"="True"
+        }
+
+        Stencil
+        {
+            Ref [_Stencil]
+            Comp [_StencilComp]
+            Pass [_StencilOp]
+            ReadMask [_StencilReadMask]
+            WriteMask [_StencilWriteMask]
+        }
+
+        Cull Off
+        Lighting Off
+        ZWrite Off
+        ZTest [unity_GUIZTestMode]
+        Blend SrcAlpha OneMinusSrcAlpha
+        ColorMask [_ColorMask]
+
+        Pass
+        {
+            Name "Default"
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma target 2.0
+
+            #include "UnityCG.cginc"
+            #include "UnityUI.cginc"
+
+            #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
+            #pragma multi_compile_local _ UNITY_UI_ALPHACLIP
+
+            struct appdata_t
+            {
+                float4 vertex   : POSITION;
+                float4 color    : COLOR;
+                float2 texcoord : TEXCOORD0;
+                float2 rectuvs : TEXCOORD1;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct v2f
+            {
+                float4 vertex   : SV_POSITION;
+                fixed4 color    : COLOR;
+                float2 texcoord  : TEXCOORD0;
+                float4 worldPosition : TEXCOORD1;
+                float2 rectuvs : TEXCOORD3;
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            sampler2D _MainTex;
+            fixed4 _Color;
+            fixed4 _TextureSampleAdd;
+            float4 _ClipRect;
+            float4 _MainTex_ST;
+            float2 _Area;
+            float _RectangleRotation;
+            float2 _Offset;
+
+            void Unity_RotateAboutAxis_Degrees_float(float3 In, float3 Axis, float Rotation, out float3 Out)
+            {
+                Rotation = radians(Rotation);
+                float s = sin(Rotation);
+                float c = cos(Rotation);
+                float one_minus_c = 1.0 - c;
+
+                Axis = normalize(Axis);
+                float3x3 rot_mat = 
+                {   one_minus_c * Axis.x * Axis.x + c, one_minus_c * Axis.x * Axis.y - Axis.z * s, one_minus_c * Axis.z * Axis.x + Axis.y * s,
+                    one_minus_c * Axis.x * Axis.y + Axis.z * s, one_minus_c * Axis.y * Axis.y + c, one_minus_c * Axis.y * Axis.z - Axis.x * s,
+                    one_minus_c * Axis.z * Axis.x - Axis.y * s, one_minus_c * Axis.y * Axis.z + Axis.x * s, one_minus_c * Axis.z * Axis.z + c
+                };
+                Out = mul(rot_mat,  In);
+            }
+
+            void Unity_Rectangle_float(float2 UV, float Width, float Height, out float Out)
+            {
+                float2 d = abs(UV * 2 - 1) - float2(Width, Height);
+                d = 1 - d / fwidth(d);
+                Out = saturate(min(d.x, d.y));
+            }
+
+            v2f vert(appdata_t v)
+            {
+                v2f OUT;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
+                OUT.worldPosition = v.vertex;
+                OUT.vertex = UnityObjectToClipPos(OUT.worldPosition);
+                OUT.rectuvs = v.rectuvs;
+
+                OUT.texcoord = TRANSFORM_TEX(v.texcoord, _MainTex);
+
+                OUT.color = v.color * _Color;
+                return OUT;
+            }
+
+            fixed4 frag(v2f IN) : SV_Target
+            {
+                // half4 color = (tex2D(_MainTex, IN.texcoord) + _TextureSampleAdd) * IN.color;
+                float rect;
+                float3 rotateduvs;
+                float3 rectuvs = float3(IN.rectuvs + _Offset,0);
+                Unity_RotateAboutAxis_Degrees_float(rectuvs,float3(0,0,1),_RectangleRotation,rotateduvs);
+
+                Unity_Rectangle_float(rotateduvs.xy,_Area.x,_Area.y,rect);
+                half4 col = float4(rect,rect,rect,rect);
+                // half4 col = float4(rectuvs.xy,0,1);
+
+
+                #ifdef UNITY_UI_CLIP_RECT
+                    color.a *= UnityGet2DClipping(IN.worldPosition.xy, _ClipRect);
+                #endif
+
+                #ifdef UNITY_UI_ALPHACLIP
+                    clip (color.a - 0.001);
+                #endif
+
+                return col;
+            }
+            ENDCG
+        }
+    }
+}
+

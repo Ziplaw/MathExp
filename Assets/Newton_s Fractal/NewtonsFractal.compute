@@ -1,0 +1,146 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+struct Point
+{
+    float2 pos;
+    float4 col;
+};
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+
+
+//z^5 + z^2 - z + 1
+//5z^4 + 2z - 1
+
+//(x + yi)^5 + (x + yi)^2 - x + yi + 1
+//5(x + yi)^4 + 2 (x+yi) - 1
+
+//
+
+
+
+
+
+RWTexture2D<float4> Result;
+RWStructuredBuffer<Point> points;
+int pointAmount = 3;
+float resolution;
+float2 offset;
+int iterations = 0;
+float dimensions = 4;
+float2 epsilon = float2(.000000001,.000000001);
+
+float2 f(float2 z)
+{
+    return z*z*z - float2(0,2);
+    
+    // float2 result = float2(1,1);
+    // for (int i = 0; i < pointAmount; ++i)
+    // {
+    //     result *= z - points[i].pos;
+    // }
+    // return result;
+}
+
+float2 fprime(float2 z)
+{
+    return 2*z*z;
+    // return (f(z+epsilon) - f(z))/epsilon;      
+}
+
+
+
+// float2 f(float x, float y, float2 roots[pointAmount])
+// {
+//     
+//     
+//     // return float2(1,1);
+//     // return float2(pow(x, 5) - 10 * pow(x, 3) * pow(y, 2) + 5 * x * pow(y, 4) + pow(x, 2) - pow(y, 2) - x + 1,
+//     //               y + pow(y, 5) - 10 * pow(x, 2) * pow(y, 3) + 2 * x * y + 5 * pow(x, 4) * y);
+// }
+
+
+// float2 fprime(float x, float y)
+// {
+//     // return float2(1,1);
+//     return float2(5 * pow(x, 4) - 30 * pow(x, 2) * pow(y, 2) + 5 * pow(y, 4) + 2 * x - 1,
+//                   2 * y + 20 * pow(x, 3) * y - 20 * x * pow(y, 3));
+//
+//     // return float2(2 * x - 1, 2 * y);
+// }
+
+
+[numthreads(8,8,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    float2 fixedCoords = (id.xy - float2(resolution * .5, resolution * .5)) * dimensions / resolution;
+
+    
+    float2 z = fixedCoords;
+    
+    
+    for (int j = 0; j < iterations; j++)
+    {
+        z = z - f(z) / fprime(z);
+    }
+
+    int closestIndex = 0;
+    int minLength = 1000000000;
+    // Result[id.xy] = 0;
+    
+    for (int l = 0; l < pointAmount; ++l)
+    {
+        const int prevMinLength = minLength;
+        // minLength = min(minLength, distance(points[i].pos, id.xy));
+        float d = distance(points[l].pos*1000, z*1000);
+        if(minLength > d) minLength = d;
+        if (minLength != prevMinLength) closestIndex = l;
+    }
+    
+    Result[id.xy] = points[closestIndex].col * .5;
+
+    // if (fixedCoords.x == 0) Result[id.xy] = .25;
+    // if (fixedCoords.y == 0) Result[id.xy] = .25;
+
+    for (int i = 0; i < pointAmount; i++)
+    {
+        if (distance(fixedCoords, points[i].pos) < .05) Result[id.xy] = points[i].col;
+    }
+
+
+    //id.xy,id.xy => dimensions(-dimensions + id.xy,-dimensions + id.xy)/resolution;
+    //resolution,resolution = dimensions,dimensions
+
+    // float2 zf = id.xy;
+    // float2 z0 = id.xy;
+    //
+    //
+    // for (int j = 0; j < iterations; j++)
+    // {
+    //     for (int i = 0; i < pointAmount; i++)
+    //     {
+    //         zf = z0 - f(z0.x, z0.y) / fprime(
+    //             z0.x, z0.y);
+    //     }
+    //     z0 = zf;
+    // }
+
+    // int closestIndex = 0;
+    // int minLength = 100000;
+    //
+    // for (int l = 0; l < pointAmount; ++l)
+    // {
+    //     const int prevMinLength = minLength;
+    //     // minLength = min(minLength, distance(points[i].pos, id.xy));
+    //     minLength = min(minLength, distance(points[l].pos, fixedCoords));
+    //     if (minLength != prevMinLength) closestIndex = l;
+    // }
+    //
+    // Result[id.xy] = points[closestIndex].col * .5;
+    //
+    // for (int k = 0; k < pointAmount; ++k)
+    // {
+    //     if (distance(fixedCoords, points[k].pos) < 32/resolution) Result[id.xy] = points[k].col;
+    // }
+}
